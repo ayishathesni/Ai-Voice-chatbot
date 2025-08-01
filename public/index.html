@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revolt Motors - Voice Chat with Rev</title>
+    <script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .voice-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2rem auto;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .voice-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 25px rgba(255, 107, 107, 0.6);
+        }
+
+        .voice-button.recording {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .voice-button.connecting {
+            background: linear-gradient(45deg, #ffa502, #ff6348);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .mic-icon {
+            width: 40px;
+            height: 40px;
+            fill: white;
+        }
+
+        .status {
+            margin: 1rem 0;
+            font-size: 1.1rem;
+            min-height: 1.5rem;
+            opacity: 0.9;
+        }
+
+        .transcript {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem;
+            margin: 1rem 0;
+            min-height: 150px;
+            text-align: left;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 8px;
+        }
+
+        .user-message {
+            background: rgba(102, 126, 234, 0.3);
+            margin-left: 2rem;
+        }
+
+        .ai-message {
+            background: rgba(255, 107, 107, 0.3);
+            margin-right: 2rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .volume-indicator {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+
+        .volume-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #51cf66, #ffd43b, #ff6b6b);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        .loading {
+            display: none;
+            font-size: 0.9rem;
+            color: #ffd93d;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+            
+            .voice-button {
+                width: 100px;
+                height: 100px;
+            }
+            
+            .mic-icon {
+                width: 35px;
+                height: 35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">REVOLT</div>
+        <div class="subtitle">Talk to Rev - Your Electric Mobility Assistant</div>
+        
+        <button class="voice-button" id="voiceButton">
+            <svg class="mic-icon" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+            </svg>
+        </button>
+        
+        <div class="volume-indicator">
+            <div class="volume-bar" id="volumeBar"></div>
+        </div>
+        
+        <div class="status" id="status">Click Connect to start chatting with Rev</div>
+        
+        <div class="transcript" id="transcript">
+            <div class="message ai-message">
+                <strong>Rev:</strong> Hello! I'm Rev, your Revolt Motors assistant. I'm here to help you learn about our amazing electric motorcycles. Click the microphone button and let's chat about the future of electric mobility!
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="control-btn" id="connectBtn" onclick="connectToServer()">Connect</button>
+            <button class="control-btn" id="clearBtn" onclick="clearTranscript()">Clear Chat</button>
+        </div>
+        
+        <div id="errorDiv" class="error" style="display: none;"></div>
+        <div class="loading" id="loading">Processing Rev's response...</div>
+    </div>
+
+    <script>
+        let socket = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let isRecording = false;
+        let isConnected = false;
+        let audioChunks = [];
+        let sessionStarted = false;
+        let recordingTimeout = null;
+        let lastSessionStart = 0;
+        const minSessionInterval = 60000; // 60 seconds to prevent rapid session starts
+
+        // UI Elements
+        const voiceButton = document.getElementById('voiceButton');
+        const status = document.getElementById('status');
+        const transcript = document.getElementById('transcript');
+        const connectBtn = document.getElementById('connectBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const errorDiv = document.getElementById('errorDiv');
+        const volumeBar = document.getElementById('volumeBar');
+        const loading = document.getElementById('loading');
+
+        // Initialize Socket.IO connection
+        function connectToServer() {
+            if (socket && socket.connected) {
+                showError('Already connected to server');
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastSessionStart < minSessionInterval) {
+                showError('Please wait a moment before starting a new session.');
+                return;
+            }
+            lastSessionStart = now;
+
+            updateStatus('Connecting to server...');
+            connectBtn.disabled = true;
+            
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                isConnected = true;
+                updateStatus('Connected! Starting voice session...');
+                connectBtn.textContent = 'Connected';
+                connectBtn.style.background = 'rgba(81, 207, 102, 0.3)';
+                hideError();
+                startSession();
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+                sessionStarted = false;
+                updateStatus('Disconnected from server');
+                connectBtn.textContent = 'Reconnect';
+                connectBtn.disabled = false;
+                connectBtn.style.background = 'rgba(255, 255, 255, 0.2)';
+                voiceButton.classList.remove('recording', 'connecting');
+            });
+
+            socket.on('session_started', () => {
+                console.log('Voice session started');
+                updateStatus('Voice session ready! Click the microphone to start talking.');
+                voiceButton.classList.remove('connecting');
+            });
+
+            socket.on('setup_complete', () => {
+                console.log('Setup complete');
+                sessionStarted = true;
+                updateStatus('Ready to chat! Click the microphone to talk to Rev.');
+            });
+
+            socket.on('audio_response', (data) => {
+                console.log('Received audio response');
+                loading.style.display = 'block';
+                playAudioResponse(data.audioData).then(() => {
+                    loading.style.display = 'none';
+                });
+            });
+
+            socket.on('text_response', (data) => {
+                console.log('Received text response:', data.text);
+                addMessage('Rev', data.text, 'ai-message');
+            });
+
+            socket.on('interrupted', () => {
+                console.log('AI was interrupted');
+                updateStatus('Listening...');
+            });
+
+            socket.on('turn_complete', () => {
+                console.log('Turn complete');
+                updateStatus('Click the microphone to continue the conversation');
+            });
+
+            socket.on('session_error', (data) => {
+                console.error('Session error:', data.error);
+                let errorMessage = `Session error: ${data.error}`;
+                if (data.error.includes('Quota exceeded')) {
+                    errorMessage = 'API quota exceeded. Please try again later or contact Revolt Motors support at support@revoltmotors.com.';
+                } else if (data.error.includes('No active session')) {
+                    errorMessage = 'No active session. Please reconnect and try again.';
+                }
+                showError(errorMessage);
+                updateStatus('Error occurred - please try reconnecting');
+                connectBtn.disabled = false;
+            });
+        }
+
+        function startSession() {
+            if (socket && socket.connected) {
+                socket.emit('start_session');
+                voiceButton.classList.add('connecting');
+            }
+        }
+
+        // Voice recording functions
+        async function initializeAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    } 
+                });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 16000
+                });
+                
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                analyser.fftSize = 256;
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = () => {
+                    if (audioChunks.length > 0) {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        processAudioBlob(audioBlob);
+                        audioChunks = [];
+                    }
+                };
+                
+                return true;
+            } catch (error) {
+                console.error('Error initializing audio:', error);
+                showError('Could not access microphone. Please allow microphone access and try again.');
+                return false;
+            }
+        }
+
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            return btoa(binary);
+        }
+
+        async function processAudioBlob(blob) {
+            try {
+                if (blob.size > 2 * 1024 * 1024) { // Limit to 2MB
+                    showError('Audio file too large. Please record a shorter message (up to 10 seconds).');
+                    return;
+                }
+
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioContext = new AudioContext({ sampleRate: 16000 });
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Convert to PCM16
+                const pcmData = convertToPCM16(audioBuffer);
+                console.log('PCM data size:', pcmData.length);
+                const base64Audio = arrayBufferToBase64(pcmData);
+                
+                if (socket && socket.connected && sessionStarted) {
+                    socket.emit('send_audio', {
+                        audioData: base64Audio,
+                        mimeType: 'audio/pcm;rate=16000' // Correct MIME type
+                    });
+                } else {
+                    showError('No active session. Please reconnect and try again.');
+                }
+            } catch (error) {
+                console.error('Error processing audio:', error);
+                showError('Error processing audio. Please try again.');
+            }
+        }
+
+        function convertToPCM16(audioBuffer) {
+            const maxLength = 16000 * 10; // 10 seconds at 16kHz
+            const length = Math.min(audioBuffer.length, maxLength);
+            const result = new Int16Array(length);
+            const channelData = audioBuffer.getChannelData(0);
+            
+            for (let i = 0; i < length; i++) {
+                const sample = Math.max(-1, Math.min(1, channelData[i]));
+                result[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            }
+            
+            const buffer = new ArrayBuffer(result.length * 2);
+            const view = new DataView(buffer);
+            
+            for (let i = 0; i < result.length; i++) {
+                view.setInt16(i * 2, result[i], true);
+            }
+            
+            return new Uint8Array(buffer);
+        }
+
+        async function playAudioResponse(base64Audio) {
+            try {
+                if (!base64Audio || base64Audio.length < 2) {
+                    throw new Error('Invalid audio data');
+                }
+
+                const binaryString = atob(base64Audio);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const sampleRate = 16000;
+                const numChannels = 1;
+                const bitsPerSample = 16;
+                const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+                const blockAlign = numChannels * bitsPerSample / 8;
+                const dataLength = bytes.length;
+                const headerLength = 44;
+                const totalLength = dataLength + headerLength;
+
+                const wavBuffer = new ArrayBuffer(totalLength);
+                const view = new DataView(wavBuffer);
+
+                writeString(view, 0, 'RIFF');
+                view.setUint32(4, totalLength - 8, true);
+                writeString(view, 8, 'WAVE');
+                writeString(view, 12, 'fmt ');
+                view.setUint16(16, 16, true);
+                view.setUint16(20, 1, true);
+                view.setUint16(22, numChannels, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, byteRate, true);
+                view.setUint16(32, blockAlign, true);
+                view.setUint16(34, bitsPerSample, true);
+                writeString(view, 36, 'data');
+                view.setUint32(40, dataLength, true);
+
+                for (let i = 0; i < dataLength; i++) {
+                    view.setUint8(44 + i, bytes[i]);
+                }
+
+                const audioContext = new AudioContext({ sampleRate });
+                const audioBuffer = await audioContext.decodeAudioData(wavBuffer);
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+
+                updateStatus('Rev is speaking...');
+                source.onended = () => {
+                    updateStatus('Click the microphone to continue the conversation');
+                };
+            } catch (error) {
+                console.error('Error playing audio response:', error);
+                showError(`Error playing audio: ${error.message}`);
+            }
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // Voice button event handler
+        voiceButton.addEventListener('click', async () => {
+            if (!isConnected || !sessionStarted) {
+                showError('Please connect to the server first');
+                return;
+            }
+
+            if (!isRecording) {
+                if (!mediaRecorder) {
+                    const initialized = await initializeAudio();
+                    if (!initialized) return;
+                }
+
+                try {
+                    mediaRecorder.start(100);
+                    isRecording = true;
+                    voiceButton.classList.add('recording');
+                    updateStatus('Listening... (Click again to stop, max 10 seconds)');
+                    startVolumeVisualization();
+                    addMessage('You', 'Speaking...', 'user-message');
+
+                    recordingTimeout = setTimeout(() => {
+                        if (isRecording) {
+                            mediaRecorder.stop();
+                            isRecording = false;
+                            voiceButton.classList.remove('recording');
+                            updateStatus('Processing your message...');
+                            stopVolumeVisualization();
+                            const messages = transcript.querySelectorAll('.user-message');
+                            if (messages.length > 0) {
+                                const lastMessage = messages[messages.length - 1];
+                                lastMessage.innerHTML = '<strong>You:</strong> (Audio message sent)';
+                            }
+                        }
+                    }, 10000);
+                } catch (error) {
+                    console.error('Error starting recording:', error);
+                    showError('Could not start recording. Please try again.');
+                }
+            } else {
+                try {
+                    clearTimeout(recordingTimeout);
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    voiceButton.classList.remove('recording');
+                    updateStatus('Processing your message...');
+                    stopVolumeVisualization();
+                    
+                    const messages = transcript.querySelectorAll('.user-message');
+                    if (messages.length > 0) {
+                        const lastMessage = messages[messages.length - 1];
+                        lastMessage.innerHTML = '<strong>You:</strong> (Audio message sent)';
+                    }
+
+                    if (socket && socket.connected && sessionStarted) {
+                        socket.emit('send_text', { text: '[INTERRUPT]' });
+                    }
+                } catch (error) {
+                    console.error('Error stopping recording:', error);
+                    showError('Error stopping recording. Please try again.');
+                }
+            }
+        });
+
+        // Volume visualization
+        function startVolumeVisualization() {
+            if (!analyser) return;
+            
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function updateVolume() {
+                if (!isRecording) return;
+                
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                const percentage = (average / 255) * 100;
+                volumeBar.style.width = percentage + '%';
+                
+                requestAnimationFrame(updateVolume);
+            }
+            
+            updateVolume();
+        }
+
+        function stopVolumeVisualization() {
+            volumeBar.style.width = '0%';
+        }
+
+        // Utility functions
+        function updateStatus(message) {
+            status.textContent = message;
+        }
+
+        function addMessage(sender, message, className) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${className}`;
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            transcript.appendChild(messageDiv);
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+
+        function clearTranscript() {
+            transcript.innerHTML = `
+                <div class="message ai-message">
+                    <strong>Rev:</strong> Hello! I'm Rev, your Revolt Motors assistant. I'm here to help you learn about our amazing electric motorcycles. Click the microphone button and let's chat about the future of electric mobility!
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            errorDiv.style.display = 'none';
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStatus('Click Connect to start chatting with Rev');
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.disconnect();
+            }
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        });
+    </script>
+</body>
+</html>
